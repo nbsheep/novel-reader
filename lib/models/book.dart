@@ -33,6 +33,8 @@ class Book {
   final int readSeconds; // 累计阅读秒数
   final int lastReadAt; // 最近打开时间戳，0 表示未读过
   final String? coverPath; // 本地封面图路径（无封面为 null）
+  final String? sourceCatalogUrl; // 在线下载书的来源目录页（检查更新用）
+  final int? sourceLastChapterId; // 下载/上次更新时的末章文章 ID
 
   Book({
     required this.id,
@@ -45,7 +47,32 @@ class Book {
     this.readSeconds = 0,
     this.lastReadAt = 0,
     this.coverPath,
+    this.sourceCatalogUrl,
+    this.sourceLastChapterId,
   });
+
+  Book copyWith({
+    int? wordCount,
+    int? readSeconds,
+    int? lastReadAt,
+    String? coverPath,
+    String? sourceCatalogUrl,
+    int? sourceLastChapterId,
+  }) =>
+      Book(
+        id: id,
+        title: title,
+        author: author,
+        filePath: filePath,
+        format: format,
+        addedAt: addedAt,
+        wordCount: wordCount ?? this.wordCount,
+        readSeconds: readSeconds ?? this.readSeconds,
+        lastReadAt: lastReadAt ?? this.lastReadAt,
+        coverPath: coverPath ?? this.coverPath,
+        sourceCatalogUrl: sourceCatalogUrl ?? this.sourceCatalogUrl,
+        sourceLastChapterId: sourceLastChapterId ?? this.sourceLastChapterId,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -58,6 +85,8 @@ class Book {
         'readSeconds': readSeconds,
         'lastReadAt': lastReadAt,
         'coverPath': coverPath,
+        'sourceCatalogUrl': sourceCatalogUrl,
+        'sourceLastChapterId': sourceLastChapterId,
       };
 
   factory Book.fromJson(Map<String, dynamic> json) {
@@ -79,6 +108,8 @@ class Book {
         readSeconds: json['readSeconds'] as int? ?? 0,
         lastReadAt: json['lastReadAt'] as int? ?? 0,
         coverPath: json['coverPath'] as String?,
+        sourceCatalogUrl: json['sourceCatalogUrl'] as String?,
+        sourceLastChapterId: json['sourceLastChapterId'] as int?,
       );
   }
 }

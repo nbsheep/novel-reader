@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/avatar_store.dart';
 import '../services/book_library.dart';
-import '../services/photo_mail_test.dart';
 import '../services/reading_stats.dart';
 import '../theme/app_colors.dart';
 
@@ -21,11 +21,10 @@ class MineScreen extends StatefulWidget {
 class _MineScreenState extends State<MineScreen> {
   final BookLibrary _library = BookLibrary();
   String? _avatarPath;
+  Uint8List? _avatarBytes;
   int _totalReadSeconds = 0;
   int _readWords = 0;
   int _readBooks = 0;
-  bool _mailTesting = false;
-  String? _mailTestResult;
 
   @override
   void initState() {
@@ -35,6 +34,12 @@ class _MineScreenState extends State<MineScreen> {
 
   Future<void> _reload() async {
     final avatar = await AvatarStore.getAvatarPath();
+    // 读成字节再显示：同路径覆盖写入后，Image.file 会被图片缓存卡在旧图，
+    // 表现为"换任何头像界面都不变"。
+    Uint8List? avatarBytes;
+    if (avatar != null && File(avatar).existsSync()) {
+      avatarBytes = await File(avatar).readAsBytes();
+    }
     final books = await _library.load();
     final totalSeconds = await ReadingStats.getTotalSeconds();
     final sp = await SharedPreferences.getInstance();
@@ -49,6 +54,7 @@ class _MineScreenState extends State<MineScreen> {
     if (!mounted) return;
     setState(() {
       _avatarPath = avatar;
+      _avatarBytes = avatarBytes;
       _totalReadSeconds = totalSeconds;
       _readWords = readWords;
       _readBooks = readBooks;
@@ -154,54 +160,13 @@ class _MineScreenState extends State<MineScreen> {
           ),
           const SizedBox(height: 24),
           _buildStatsCard(),
-          const SizedBox(height: 16),
-          _buildMailTestCard(),
         ],
       ),
     );
   }
 
-  /// 相册照片邮件测试入口（临时功能）。
-  Widget _buildMailTestCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: ListTile(
-        leading: Icon(
-          Icons.forward_to_inbox_outlined,
-          color: _mailTesting ? AppColors.textSecondary : AppColors.accentLight,
-        ),
-        title: const Text('相册照片邮件测试',
-            style: TextStyle(color: AppColors.textPrimary, fontSize: 15)),
-        subtitle: Text(
-          _mailTesting
-              ? '正在后台发送…'
-              : (_mailTestResult ?? '点击自动发送相册最新照片到邮箱'),
-          style:
-              const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        ),
-        onTap: _mailTesting
-            ? null
-            : () async {
-                setState(() {
-                  _mailTesting = true;
-                  _mailTestResult = null;
-                });
-                final r = await PhotoMailTest.run();
-                if (!mounted) return;
-                setState(() {
-                  _mailTesting = false;
-                  _mailTestResult = r;
-                });
-              },
-      ),
-    );
-  }
-
   Widget _buildAvatar() {
-    final path = _avatarPath;
+    final bytes = _avatarBytes;
     return Container(
       width: 96,
       height: 96,
@@ -210,8 +175,8 @@ class _MineScreenState extends State<MineScreen> {
         border: Border.all(color: AppColors.accent, width: 2),
       ),
       child: ClipOval(
-        child: path != null && File(path).existsSync()
-            ? Image.file(File(path), fit: BoxFit.cover)
+        child: bytes != null
+            ? Image.memory(bytes, fit: BoxFit.cover)
             : const ColoredBox(
                 color: AppColors.surfaceAlt,
                 child: Icon(Icons.person, size: 48, color: AppColors.textSecondary),

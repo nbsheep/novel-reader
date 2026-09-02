@@ -86,6 +86,7 @@ class DownloadResult {
   final String author;
   final int chapterCount;
   final String? coverFilePath; // 临时封面图路径（抓取失败为 null）
+  final int lastChapterId; // 末章文章 ID（检查更新用）
 
   const DownloadResult({
     required this.filePath,
@@ -93,6 +94,7 @@ class DownloadResult {
     required this.author,
     required this.chapterCount,
     this.coverFilePath,
+    required this.lastChapterId,
   });
 }
 
@@ -274,20 +276,17 @@ class GuishujiSource {
     return '$base/${m.group(1)}/${m.group(2)}/';
   }
 
-  /// 下载整本书为 EPUB，返回临时文件路径。
-  ///
-  /// [isCancelled] 返回 true 时中断下载（抛 [DownloadCancelled]）。
-  static Future<DownloadResult> downloadBook(
-    String catalogUrl, {
+  /// 并发抓取章节 ID 区间 [firstId, lastId]，返回抓到的章节（按 ID 升序，
+  /// 404/失败项跳过）。[isCancelled] 返回 true 时抛 [DownloadCancelled]。
+  static Future<List<EpubChapter>> _fetchRange(
+    CatalogInfo info,
+    int firstId,
+    int lastId, {
     required void Function(int done, int total) onProgress,
     bool Function()? isCancelled,
   }) async {
-    final info = await fetchCatalogInfo(catalogUrl);
-
-    final total = info.lastId - info.firstId + 1;
-    if (total <= 0 || total > 100000) {
-      throw const FormatException('章节区间异常');
-    }
+    final total = lastId - firstId + 1;
+    if (total <= 0) return [];
 
     final results = <int, EpubChapter?>{};
     var cursor = 0;
@@ -299,7 +298,7 @@ class GuishujiSource {
           throw const DownloadCancelled();
         }
         final idx = cursor++;
-        final chid = info.firstId + idx;
+        final chid = firstId + idx;
         var chapter = await fetchChapter(info.category, info.bookId, chid);
         // 失败重试一次
         if (chapter == null) {
@@ -320,6 +319,47 @@ class GuishujiSource {
       final c = results[i];
       if (c != null) chapters.add(c);
     }
+    return chapters;
+  }
+
+  /// 增量抓取 [afterId] 之后（不含）到当前末章的新章节，升序返回。
+  /// 已追平则返回空列表。
+  static Future<List<EpubChapter>> fetchNewChapters(
+    CatalogInfo info,
+    int afterId, {
+    required void Function(int done, int total) onProgress,
+    bool Function()? isCancelled,
+  }) =>
+      _fetchRange(
+        info,
+        afterId + 1 > info.firstId ? afterId + 1 : info.firstId,
+        info.lastId,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+
+  /// 下载整本书为 EPUB，返回临时文件路径。
+  ///
+  /// [isCancelled] 返回 true 时中断下载（抛 [DownloadCancelled]）。
+  static Future<DownloadResult> downloadBook(
+    String catalogUrl, {
+    required void Function(int done, int total) onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final info = await fetchCatalogInfo(catalogUrl);
+
+    final total = info.lastId - info.firstId + 1;
+    if (total <= 0 || total > 100000) {
+      throw const FormatException('章节区间异常');
+    }
+
+    final chapters = await _fetchRange(
+      info,
+      info.firstId,
+      info.lastId,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
     if (chapters.isEmpty) {
       throw const FormatException('未抓到任何章节内容');
     }
@@ -354,6 +394,7 @@ class GuishujiSource {
       author: info.author,
       chapterCount: chapters.length,
       coverFilePath: coverFilePath,
+      lastChapterId: info.lastId,
     );
   }
 

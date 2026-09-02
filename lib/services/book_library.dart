@@ -183,6 +183,8 @@ class BookLibrary {
     String title,
     String author, {
     String? coverTempPath,
+    String? sourceCatalogUrl,
+    int? sourceLastChapterId,
   }) =>
       _serialized(() async {
         final cleaned = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
@@ -211,6 +213,8 @@ class BookLibrary {
           format: BookFormat.epub,
           addedAt: now,
           coverPath: coverPath,
+          sourceCatalogUrl: sourceCatalogUrl,
+          sourceLastChapterId: sourceLastChapterId,
         );
         books.insert(0, book);
         _cache = List.of(books);
@@ -224,23 +228,18 @@ class BookLibrary {
     int addReadSeconds = 0,
     int? setWordCount,
     int? setLastReadAt,
+    int? setSourceLastChapterId,
   }) =>
       _serialized(() async {
         final books = await _freshCopy();
         final idx = books.indexWhere((b) => b.id == id);
         if (idx < 0) return;
         final b = books[idx];
-        books[idx] = Book(
-          id: b.id,
-          title: b.title,
-          author: b.author,
-          filePath: b.filePath,
-          format: b.format,
-          addedAt: b.addedAt,
-          wordCount: setWordCount ?? b.wordCount,
+        books[idx] = b.copyWith(
+          wordCount: setWordCount,
           readSeconds: b.readSeconds + addReadSeconds,
-          lastReadAt: setLastReadAt ?? b.lastReadAt,
-          coverPath: b.coverPath,
+          lastReadAt: setLastReadAt,
+          sourceLastChapterId: setSourceLastChapterId,
         );
         _cache = List.of(books);
         await _persist(books);
@@ -252,19 +251,7 @@ class BookLibrary {
         final books = await _freshCopy();
         final idx = books.indexWhere((b) => b.id == id);
         if (idx < 0) return;
-        final b = books[idx];
-        books[idx] = Book(
-          id: b.id,
-          title: b.title,
-          author: b.author,
-          filePath: b.filePath,
-          format: b.format,
-          addedAt: b.addedAt,
-          wordCount: b.wordCount,
-          readSeconds: b.readSeconds,
-          lastReadAt: b.lastReadAt,
-          coverPath: coverPath,
-        );
+        books[idx] = books[idx].copyWith(coverPath: coverPath);
         _cache = List.of(books);
         await _persist(books);
       });

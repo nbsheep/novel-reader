@@ -6,6 +6,7 @@ import '../services/book_library.dart';
 import '../services/guishuji_source.dart';
 import '../theme/app_colors.dart';
 import 'reader_screen.dart';
+import 'web_search_screen.dart';
 
 const Map<String, String> _categoryEmoji = {
   'kehuan': '🚀',
@@ -38,6 +39,13 @@ class OnlineSearchScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('在线找书')),
       body: Column(
         children: [
+          _SiteSearchBanner(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WebSearchScreen()),
+              );
+            },
+          ),
           _PasteUrlBanner(
             onTap: () {
               Navigator.of(context).push(
@@ -45,6 +53,7 @@ class OnlineSearchScreen extends StatelessWidget {
               );
             },
           ),
+          _SiteUrlCopyRow(),
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -76,6 +85,55 @@ class OnlineSearchScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 站内搜索入口：内嵌网页里搜书（浏览器环境可过 Cloudflare），
+/// 打开书的目录页后浮出下载按钮。
+class _SiteSearchBanner extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _SiteSearchBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: AppColors.gradient),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.travel_explore, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '站内搜索',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    '网页里搜书名，打开目录页即可一键下载',
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white),
+          ],
+        ),
       ),
     );
   }
@@ -121,6 +179,63 @@ class _PasteUrlBanner extends StatelessWidget {
               ),
             ),
             const Icon(Icons.chevron_right, color: Colors.white),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 官网地址一键复制：App 内搜索被 Cloudflare 拦，用户复制地址去系统
+/// 浏览器打开找书，再把目录页链接粘回来下载。
+class _SiteUrlCopyRow extends StatelessWidget {
+  final EdgeInsetsGeometry margin;
+
+  const _SiteUrlCopyRow({
+    this.margin = const EdgeInsets.fromLTRB(16, 8, 16, 4),
+  });
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(const ClipboardData(text: GuishujiSource.base));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('官网地址已复制，去浏览器打开找书，复制目录页链接后回来粘贴'),
+      duration: Duration(seconds: 3),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _copy(context),
+      child: Container(
+        margin: margin,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.public, size: 16, color: AppColors.accentLight),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                GuishujiSource.base,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+              ),
+            ),
+            const Icon(Icons.content_copy,
+                size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 4),
+            const Text(
+              '一键复制',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
           ],
         ),
       ),
@@ -458,7 +573,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           });
         },
       );
-      await _addToLibrary(result);
+      await _addToLibrary(result, widget.book.catalogUrl);
       if (!mounted) return;
       setState(() => _downloading = false);
       _showDone(result);
@@ -475,12 +590,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     }
   }
 
-  Future<void> _addToLibrary(DownloadResult r) async {
+  Future<void> _addToLibrary(DownloadResult r, String catalogUrl) async {
     await BookLibrary().addDownloadedBook(
       r.filePath,
       r.title,
       r.author,
       coverTempPath: r.coverFilePath,
+      sourceCatalogUrl: catalogUrl,
+      sourceLastChapterId: r.lastChapterId,
     );
   }
 
@@ -788,6 +905,8 @@ class _PasteUrlScreenState extends State<PasteUrlScreen> {
         result.title,
         result.author,
         coverTempPath: result.coverFilePath,
+        sourceCatalogUrl: catalogUrl,
+        sourceLastChapterId: result.lastChapterId,
       );
       if (!mounted) return;
       setState(() => _downloading = false);
@@ -858,6 +977,7 @@ class _PasteUrlScreenState extends State<PasteUrlScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _SiteUrlCopyRow(margin: const EdgeInsets.only(bottom: 12)),
           TextField(
             controller: _controller,
             maxLines: 3,

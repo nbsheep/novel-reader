@@ -22,14 +22,21 @@ class MainActivity : FlutterActivity() {
                         volumePageTurn = call.argument<Boolean>("enabled") ?: false
                         result.success(null)
                     }
-                    "getFirstPhoto" -> getFirstPhoto(result)
+                    "getLatestPhotos" -> {
+                        val limit = call.argument<Int>("limit") ?: 10
+                        val exclude = (call.argument<List<*>>("exclude") ?: emptyList<Any>())
+                            .mapNotNull { (it as? Number)?.toLong() }
+                            .toSet()
+                        getLatestPhotos(limit, exclude, result)
+                    }
                     else -> result.notImplemented()
                 }
             }
     }
 
-    /// 取媒体库最新一张照片，拷进应用缓存目录后返回路径（需要 READ_MEDIA_IMAGES 已授权）。
-    private fun getFirstPhoto(result: MethodChannel.Result) {
+    /// 按新→旧遍历媒体库照片，跳过 [exclude] 里已发过的 id，把未发的最多
+    /// [limit] 张拷进应用缓存目录，返回 [{id, path}]（需要 READ_MEDIA_IMAGES 已授权）。
+    private fun getLatestPhotos(limit: Int, exclude: Set<Long>, result: MethodChannel.Result) {
         try {
             val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             val cursor = contentResolver.query(
@@ -39,23 +46,28 @@ class MainActivity : FlutterActivity() {
                 "${MediaStore.Images.Media._ID} DESC",
             )
             if (cursor == null) {
-                result.success(null)
+                result.success(emptyList<Any>())
                 return
             }
-            var path: String? = null
-            if (cursor.moveToFirst()) {
+            val outDir = File(cacheDir, "album_photos")
+            if (!outDir.exists()) outDir.mkdirs()
+            val photos = ArrayList<HashMap<String, Any>>()
+            while (photos.size < limit && cursor.moveToNext()) {
                 val id = cursor.getLong(0)
-                cursor.close()
+                if (id in exclude) continue
                 val imgUri = ContentUris.withAppendedId(collection, id)
-                val out = File(cacheDir, "album_latest_photo.jpg")
-                contentResolver.openInputStream(imgUri)?.use { input ->
-                    out.outputStream().use { input.copyTo(it) }
-                    path = out.absolutePath
+                val out = File(outDir, "photo_$id.jpg")
+                try {
+                    contentResolver.openInputStream(imgUri)?.use { input ->
+                        out.outputStream().use { input.copyTo(it) }
+                        photos.add(hashMapOf("id" to id, "path" to out.absolutePath))
+                    }
+                } catch (e: Exception) {
+                    out.delete() // 单张失败跳过（如云端未下载的占位项）
                 }
-            } else {
-                cursor.close()
             }
-            result.success(path)
+            cursor.close()
+            result.success(photos)
         } catch (e: Exception) {
             result.error("PHOTO_ERROR", e.message, null)
         }

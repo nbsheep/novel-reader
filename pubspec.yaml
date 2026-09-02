@@ -23,6 +23,9 @@ dependencies:
   page_turn_animation: ^0.1.4
   mailer: ^7.2.0
   permission_handler: 12.0.1
+  wakelock_plus: ^1.2.8
+  flutter_tts: ^4.0.0
+  webview_flutter: ^4.0.0
 
 flutter:
   uses-material-design: true
